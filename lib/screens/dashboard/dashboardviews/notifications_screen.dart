@@ -1,131 +1,73 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:provider/provider.dart';
+import '../../../providers/app_state.dart';
 
-class NotificationsScreen extends StatefulWidget {
+class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   @override
-  State<NotificationsScreen> createState() => _NotificationsScreenState();
-}
-
-class _NotificationsScreenState extends State<NotificationsScreen> {
-  final TextEditingController _controller = TextEditingController();
-  final String fetchUrl = 'https://yourdomain.com/api/get_notifications.php';
-  final String sendUrl = 'https://yourdomain.com/api/send_notification.php';
-  List<Map<String, dynamic>> notifications = [];
-  bool isLoading = false;
-  String? error;
-
-  @override
-  void initState() {
-    super.initState();
-    fetchNotifications();
-  }
-
-  Future<void> fetchNotifications() async {
-    setState(() {
-      isLoading = true;
-      error = null;
-    });
-
-    try {
-      final response = await http.get(Uri.parse(fetchUrl));
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        setState(() {
-          notifications = List<Map<String, dynamic>>.from(data);
-        });
-      } else {
-        setState(() {
-          error = 'Failed to fetch notifications.';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        error = 'Error fetching data: $e';
-      });
-    }
-
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  Future<void> sendNotification() async {
-    final message = _controller.text.trim();
-    if (message.isEmpty) return;
-
-    try {
-      final response = await http.post(
-        Uri.parse(sendUrl),
-        body: {'message': message},
-      );
-
-      if (response.statusCode == 200) {
-        _controller.clear();
-        await fetchNotifications();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notification sent')),
-        );
-      } else {
-        throw Exception('Failed to send notification');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Consume AppState to get status and errors
+    final appState = context.watch<AppState>();
+    final systemStatus = appState.currentStatus;
+    final List<String> alerts = systemStatus?.errors ?? [];
+    // Show loading only if the main status is still loading
+    final isLoading = appState.isLoading && systemStatus == null;
+    final error = appState.error; // Use error from AppState
+
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          children: [
-            // Notification input box
-            TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                labelText: 'Enter notification message',
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: sendNotification,
-                ),
-                border: const OutlineInputBorder(),
+       backgroundColor: Colors.grey[100], // Consistent background
+       body: isLoading
+           ? const Center(child: CircularProgressIndicator())
+           : error != null && systemStatus == null // Show error only if status is null
+               ? Center(
+                   child: Padding(
+                     padding: const EdgeInsets.all(16.0),
+                     child: Column(
+                       mainAxisAlignment: MainAxisAlignment.center,
+                       children: [
+                         Text(
+                           'Error loading system status: $error', 
+                           style: TextStyle(color: Colors.red[700]),
+                           textAlign: TextAlign.center,
+                         ),
+                         const SizedBox(height: 10),
+                         ElevatedButton(
+                           onPressed: () => Provider.of<AppState>(context, listen: false).fetchSystemStatus(),
+                           child: const Text('Retry'),
+                         ),
+                       ],
+                     ),
+                   ))
+            : RefreshIndicator( // ✅ Add pull-to-refresh
+                onRefresh: () => context.read<AppState>().fetchSystemStatus(),
+                child: alerts.isEmpty
+                   ? Center(
+                       child: Text(
+                         "No active system alerts.", 
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                       )
+                     )
+                   : ListView.builder(
+                       physics: const AlwaysScrollableScrollPhysics(), // Needed for RefreshIndicator
+                       padding: const EdgeInsets.all(8.0),
+                       itemCount: alerts.length,
+                       itemBuilder: (context, index) {
+                         final alertMessage = alerts[index];
+                         return Card(
+                           elevation: 1.5,
+                           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                           color: Colors.orange[50], // Use a warning color
+                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                           child: ListTile(
+                              leading: Icon(Icons.warning_amber_rounded, color: Colors.orange[700]),
+                              title: Text(alertMessage, style: const TextStyle(fontSize: 14)),
+                              // Optional: Add timestamp if available or needed
+                           ),
+                         );
+                       },
+                     ),
               ),
-              minLines: 1,
-              maxLines: 4,
-            ),
-            const SizedBox(height: 20),
-            // Notifications list or error/loading
-            Expanded(
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : error != null
-                      ? Center(child: Text(error!))
-                      : ListView.builder(
-                          itemCount: notifications.length,
-                          itemBuilder: (context, index) {
-                            final item = notifications[index];
-                            return Card(
-                              child: ListTile(
-                                title: Text(item['message'] ?? 'No message'),
-                                subtitle: Text(item['sender'] ?? 'Unknown sender'),
-                                trailing: Text(
-                                  item['created_at'] ?? '',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
