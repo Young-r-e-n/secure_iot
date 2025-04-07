@@ -1,201 +1,350 @@
-import 'dart:convert';
+// import 'dart:convert'; // Not needed if using models fully
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart'; // ✅ Keep provider
+import '../../../providers/app_state.dart'; // ✅ Keep AppState import
+// import '../../../services/ApiService.dart'; // No longer needed directly
+import '../../../models/User.dart'; // ✅ Keep User model import
 
 class ManageUsersScreen extends StatefulWidget {
+  const ManageUsersScreen({super.key});
+
   @override
   _ManageUsersScreenState createState() => _ManageUsersScreenState();
 }
 
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
-  late Future<List<dynamic>> _usersFuture;
-  final String baseUrl = "https://clarence.fhmconsultants.com/api"; // Set your base URL
+  // Removed local state variables
 
   @override
   void initState() {
     super.initState();
-    _usersFuture = fetchUsers();
-  }
-
-  Future<List<dynamic>> fetchUsers() async {
-    final response = await http.get(Uri.parse('$baseUrl/users.php?action=read'));
-    if (response.statusCode == 200) {
-      return json.decode(response.body);
-    } else {
-      throw Exception('Failed to load users');
-    }
-  }
-
-  Future<void> createUser(String name, String email, String password, String role) async {
-    await http.post(Uri.parse('$baseUrl/users.php?action=create'),
-        body: {'name': name, 'email': email, 'password': password, 'role': role});
-    setState(() {
-      _usersFuture = fetchUsers(); // Refresh the list after creation
+    // Fetch users when the screen initializes, if not already loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+       final appState = Provider.of<AppState>(context, listen: false);
+       // Check if users are empty or loading to trigger initial fetch
+       if (appState.managedUsers.isEmpty && !appState.isLoadingUsers) {
+          appState.fetchManagedUsers();
+       }
     });
   }
 
-  Future<void> updateUser(dynamic id, String name, String email, String role) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/users.php?action=update'),
-      body: {'id': id.toString(), 'name': name, 'email': email, 'role': role},
-    );
-
-    if (response.statusCode == 200) {
-      setState(() {
-        _usersFuture = fetchUsers(); // Refresh after update
-      });
-    } else {
-      throw Exception('Failed to update user');
-    }
-  }
-
-  Future<void> deleteUser(int id) async {
-    await http.post(Uri.parse('$baseUrl/users.php?action=delete'),
-        body: {'id': id.toString()});
-    setState(() {
-      _usersFuture = fetchUsers(); // Refresh after delete
-    });
-  }
+  // Removed local fetch/create/update/delete methods
+  /*
+  @override
+  void didChangeDependencies() { ... }
+  Future<void> _fetchUsers() async { ... }
+  Future<void> createUser(...) async { ... }
+  Future<void> updateUser(...) async { ... }
+  Future<void> deleteUser(...) async { ... }
+  */
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-    
-      body: FutureBuilder(
-        future: _usersFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+    // Consume AppState for user list, loading, and error state
+    final appState = context.watch<AppState>();
 
-          final users = snapshot.data as List<dynamic>;
-          return ListView.builder(
-            itemCount: users.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text(users[index]['name']),
-                subtitle: Text(users[index]['email']),
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      body: _buildBody(appState),
+      floatingActionButton: FloatingActionButton(
+        // Pass AppState to dialog method
+        onPressed: () => _showAddUserDialog(context, appState),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+        tooltip: 'Add User',
+      ),
+    );
+  }
+
+  Widget _buildBody(AppState appState) {
+     // Use state directly from AppState
+     final bool isLoading = appState.isLoadingUsers;
+     final String? error = appState.userManagementError;
+     final List<User> users = appState.managedUsers;
+
+     // Show loading indicator
+     if (isLoading && users.isEmpty) { // Show only if list is empty while loading
+       return const Center(child: CircularProgressIndicator());
+     }
+     // Show error message
+     if (error != null && users.isEmpty) { // Show only if list is empty on error
+        return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                 mainAxisAlignment: MainAxisAlignment.center,
+                 children: [
+                   Text('Error loading users: $error', textAlign: TextAlign.center, style: TextStyle(color: Colors.red[700])),
+                   const SizedBox(height: 10),
+                   // Call AppState method to retry
+                   ElevatedButton(onPressed: () => appState.fetchManagedUsers(forceRefresh: true), child: const Text('Retry')),
+                 ],
+               ),
+            ));
+     }
+     // Show empty state
+     if (users.isEmpty) {
+       return RefreshIndicator(
+           onRefresh: () => appState.fetchManagedUsers(forceRefresh: true),
+           child: const Center(child: Text('No users found.'))
+        );
+     }
+
+     // Display the list
+     return RefreshIndicator(
+        // Call AppState method to refresh
+        onRefresh: () => appState.fetchManagedUsers(forceRefresh: true),
+        child: ListView.builder(
+          padding: const EdgeInsets.all(8.0),
+          itemCount: users.length,
+          itemBuilder: (context, index) {
+             final user = users[index];
+            return Card(
+              elevation: 1.5,
+              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                   child: Text(user.role.substring(0,1).toUpperCase()),
+                   backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                ),
+                title: Text(user.name, style: const TextStyle(fontWeight: FontWeight.w500)),
+                subtitle: Text(user.email),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(Icons.edit, color: Color(0xFF1E40AF)),
-                      onPressed: () => _editUser(context, users[index]),
+                      icon: Icon(Icons.edit_outlined, color: Theme.of(context).colorScheme.primary),
+                      tooltip: 'Edit User',
+                      // Pass AppState to dialog method
+                      onPressed: () => _editUser(context, appState, user),
                     ),
                     IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => deleteUser(users[index]['id']),
+                      icon: Icon(Icons.delete_outline, color: Colors.redAccent),
+                      tooltip: 'Delete User',
+                      // Call AppState method directly
+                      onPressed: () => _confirmDeleteUser(context, appState, user.id),
                     ),
                   ],
                 ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddUserDialog(context),
-        backgroundColor: Color(0xFF1E40AF),
-        child: Icon(Icons.add, color: Colors.white),
-      ),
-    );
+              ),
+            );
+          },
+        ),
+     );
   }
 
-  void _showAddUserDialog(BuildContext context) {
+  // --- Dialogs --- 
+
+  // Pass AppState to Add User Dialog
+  void _showAddUserDialog(BuildContext context, AppState appState) {
+    final _formKey = GlobalKey<FormState>(); 
     TextEditingController nameController = TextEditingController();
     TextEditingController emailController = TextEditingController();
     TextEditingController passwordController = TextEditingController();
-    TextEditingController roleController = TextEditingController();
+    String? selectedRole = 'Staff';
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Text("Add User", style: TextStyle(color: Color(0xFF1E40AF), fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildStyledTextField(nameController, "Name"),
-                SizedBox(height: 10),
-                _buildStyledTextField(emailController, "Email"),
-                SizedBox(height: 10),
-                _buildStyledTextField(passwordController, "Password", obscureText: true),
-                SizedBox(height: 10),
-                _buildStyledTextField(roleController, "Role"),
-              ],
-            ),
+          title: Text("Add New User", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+          content: StatefulBuilder( 
+             builder: (BuildContext context, StateSetter setState) {
+               return SingleChildScrollView(
+                 child: Form(
+                    key: _formKey,
+                    child: Column(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         _buildStyledTextField(context, nameController, "Name", validator: (val) => val!.isEmpty ? 'Name required' : null),
+                         const SizedBox(height: 10),
+                         _buildStyledTextField(context, emailController, "Email", keyboardType: TextInputType.emailAddress, validator: (val) => val!.isEmpty || !val.contains('@') ? 'Valid email required' : null),
+                         const SizedBox(height: 10),
+                         _buildStyledTextField(context, passwordController, "Password", obscureText: true, validator: (val) => val!.length < 6 ? 'Password min 6 chars' : null),
+                         const SizedBox(height: 10),
+                         DropdownButtonFormField<String>(
+                            value: selectedRole,
+                            items: ['Admin', 'Security', 'Staff'] 
+                               .map((role) => DropdownMenuItem(value: role, child: Text(role)))
+                               .toList(),
+                            onChanged: (value) => setState(() => selectedRole = value),
+                            decoration: _getStyledInputDecoration(context, 'Role'),
+                            validator: (value) => value == null ? 'Role required' : null,
+                         ),
+                       ],
+                     ),
+                 ),
+               );
+             },
           ),
-          actions: _buildDialogActions(() {
-            createUser(nameController.text, emailController.text, passwordController.text, roleController.text);
-            Navigator.pop(context);
+          actions: _buildDialogActions(context, () async { // Make async
+            if (_formKey.currentState!.validate()) {
+               // ✅ Call AppState method
+               bool success = await appState.createManagedUser(
+                 name: nameController.text,
+                 email: emailController.text,
+                 password: passwordController.text,
+                 role: selectedRole!,
+               );
+               if (mounted && success) {
+                  Navigator.pop(context);
+                  // Optional: Show success snackbar
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User created successfully'), backgroundColor: Colors.green));
+               } else if (mounted) {
+                 // Error message should be available via appState.userManagementError
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(appState.userManagementError ?? 'Failed to create user'), backgroundColor: Colors.red));
+               }
+            }
           }),
         );
       },
     );
   }
 
-  void _editUser(BuildContext context, Map user) {
-    TextEditingController nameController = TextEditingController(text: user['name']);
-    TextEditingController emailController = TextEditingController(text: user['email']);
-    TextEditingController roleController = TextEditingController(text: user['role']);
+  // Pass AppState and User object to Edit Dialog
+  void _editUser(BuildContext context, AppState appState, User user) {
+    final _formKey = GlobalKey<FormState>();
+    TextEditingController nameController = TextEditingController(text: user.name);
+    TextEditingController emailController = TextEditingController(text: user.email);
+    String? selectedRole = user.role;
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Center(child: Text("Edit User", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)))),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildStyledTextField(nameController, "Name"),
-                SizedBox(height: 10),
-                _buildStyledTextField(emailController, "Email"),
-                SizedBox(height: 10),
-                _buildStyledTextField(roleController, "Role"),
-              ],
-            ),
+          title: Text("Edit User: ${user.name}", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 18)),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) { 
+              return SingleChildScrollView(
+                child: Form(
+                   key: _formKey,
+                   child: Column(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+                       _buildStyledTextField(context, nameController, "Name", validator: (val) => val!.isEmpty ? 'Name required' : null),
+                       const SizedBox(height: 10),
+                       _buildStyledTextField(context, emailController, "Email", keyboardType: TextInputType.emailAddress, validator: (val) => val!.isEmpty || !val.contains('@') ? 'Valid email required' : null),
+                       const SizedBox(height: 10),
+                       DropdownButtonFormField<String>(
+                         value: selectedRole,
+                         items: ['Admin', 'Security', 'Staff'] 
+                            .map((role) => DropdownMenuItem(value: role, child: Text(role)))
+                            .toList(),
+                         onChanged: (value) => setState(() => selectedRole = value),
+                         decoration: _getStyledInputDecoration(context, 'Role'),
+                         validator: (value) => value == null ? 'Role required' : null,
+                       ),
+                     ],
+                   ),
+                ),
+              );
+            }
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: Color(0xFF1E40AF), fontSize: 16))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF1E40AF), foregroundColor: Colors.white),
-              onPressed: () {
-                updateUser(user['id'], nameController.text, emailController.text, roleController.text);
-                Navigator.pop(context);
-              },
-              child: Text("Update", style: TextStyle(fontSize: 16)),
-            ),
-          ],
+          actions: _buildDialogActions(context, () async { // Make async
+            if (_formKey.currentState!.validate()) {
+              // Create a map of the updated fields
+              final updatedUserData = User(
+                  id: user.id, 
+                  name: nameController.text, 
+                  email: emailController.text, 
+                  role: selectedRole!, 
+                  username: user.username // Keep original username (not edited here)
+              );
+              
+              // Call AppState method
+              bool success = await appState.updateManagedUser(updatedUserData);
+
+              if (mounted && success) {
+                 Navigator.pop(context);
+                 // Optional: Show success snackbar
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User updated successfully'), backgroundColor: Colors.green));
+              } else if (mounted) {
+                 // Error message should be available via appState.userManagementError
+                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(appState.userManagementError ?? 'Failed to update user'), backgroundColor: Colors.red));
+              }
+            }
+          }),
         );
       },
     );
   }
 
-  Widget _buildStyledTextField(TextEditingController controller, String label, {bool obscureText = false}) {
-    return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: Colors.blue.withOpacity(0.1),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Color(0xFF1E40AF))),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Color(0xFF1E40AF), width: 2)),
+  // Pass AppState and user ID to confirmation dialog
+  void _confirmDeleteUser(BuildContext context, AppState appState, int userId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Deletion'),
+        content: const Text('Are you sure you want to delete this user? This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () async {
+               Navigator.pop(context); // Close confirmation dialog first
+               
+               // Call AppState method
+               bool success = await appState.deleteManagedUser(userId);
+               
+               if (mounted && success) {
+                 // Optional: Show success snackbar
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted successfully'), backgroundColor: Colors.green));
+               } else if (mounted) {
+                  // Error message should be available via appState.userManagementError
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(appState.userManagementError ?? 'Failed to delete user'), backgroundColor: Colors.red));
+               }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red, fontSize: 16)),
+          ),
+        ],
       ),
     );
   }
 
-  List<Widget> _buildDialogActions(VoidCallback onSave) {
+  // --- UI Helpers --- 
+
+  Widget _buildStyledTextField(BuildContext context, TextEditingController controller, String label, {
+    bool obscureText = false,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      decoration: _getStyledInputDecoration(context, label),
+      validator: validator,
+    );
+  }
+
+  InputDecoration _getStyledInputDecoration(BuildContext context, String label) {
+    return InputDecoration(
+      labelText: label,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+    );
+  }
+
+  List<Widget> _buildDialogActions(BuildContext context, VoidCallback onConfirm) {
     return [
-      TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
-      TextButton(onPressed: onSave, child: Text("Save")),
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text("Cancel", style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 16)),
+      ),
+      ElevatedButton(
+        onPressed: onConfirm,
+        child: const Text("Confirm", style: TextStyle(fontSize: 16)),
+        style: ElevatedButton.styleFrom(
+           backgroundColor: Theme.of(context).colorScheme.primary,
+           foregroundColor: Colors.white,
+        ),
+      ),
     ];
   }
 }
