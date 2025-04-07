@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import '../dashboard/dashboard_screen.dart';
+import 'package:provider/provider.dart';
+import '../../providers/app_state.dart';
 
 class LoginRegisterScreen extends StatefulWidget {
   const LoginRegisterScreen({super.key});
@@ -17,56 +16,56 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
-  bool _isLoading = false;
-  String message = '';
 
-Future<void> authenticate(String action) async {
-  if (!_formKey.currentState!.validate()) return;
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  setState(() {
-    _isLoading = true;
-    message = '';
-  });
+    final appState = Provider.of<AppState>(context, listen: false);
+    await appState.login(_emailController.text, _passwordController.text);
+  }
 
-  try {
-    final response = await http.post(
-      Uri.parse('https://clarence.fhmconsultants.com/api/db.php?action=$action'),
-      body: {
-        'name': _nameController.text,
-        'email': _emailController.text,
-        'password': _passwordController.text,
-        'role': _role,
-      },
+  Future<void> _handleRegister() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final appState = Provider.of<AppState>(context, listen: false);
+    final bool success = await appState.register(
+      name: _nameController.text,
+      email: _emailController.text,
+      password: _passwordController.text,
+      role: _role,
     );
 
-    //print('Raw Response: ${response.body}');  // Debugging step
-
-    final responseData = json.decode(response.body);
-   // print('Decoded Response: $responseData'); // Debugging step
-
-    if (responseData.containsKey('success') && responseData['success']) {
-      if (action == 'login') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => DashboardScreen(role: responseData['role'])),
-        );
-      } else {
-        setState(() => message = responseData['message']);
-      }
-    } else {
-      setState(() => message = responseData['message'] ?? 'Unexpected error.');
+    if (mounted) {
+       final message = appState.error ?? (success ? "Registration successful!" : "Registration failed.");
+       final color = success ? Colors.green : Colors.red;
+       ScaffoldMessenger.of(context).showSnackBar(
+         SnackBar(content: Text(message), backgroundColor: color),
+       );
+       if (success) {
+          setState(() {
+             isRegistering = false;
+          });
+       }
+       appState.clearError();
     }
-  } catch (e) {
-    print('Error caught: $e'); // Debugging step
-    setState(() => message = 'An error occurred. Please try again.');
-  } finally {
-    setState(() => _isLoading = false);
-  }
-}
 
+    _passwordController.clear();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    final isLoading = appState.isLoading;
+    final errorMessage = appState.error;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -94,35 +93,46 @@ Future<void> authenticate(String action) async {
                     ),
                     SizedBox(height: 32),
                     if (isRegistering) _buildTextField(_nameController, 'Name', Icons.person),
-                    _buildTextField(_emailController, 'Email', Icons.email),
+                    _buildTextField(_emailController, isRegistering ? 'Email' : 'Username/Email', Icons.email),
                     _buildTextField(_passwordController, 'Password', Icons.lock, isPassword: true),
                     if (isRegistering) _buildRoleDropdown(),
                     SizedBox(height: 24),
+                    if (errorMessage != null && !isLoading)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10.0),
+                        child: Text(
+                          errorMessage,
+                          style: TextStyle(color: Colors.redAccent, fontSize: 14),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                     ElevatedButton(
-                      onPressed: _isLoading ? null : () => authenticate(isRegistering ? 'register' : 'login'),
+                      onPressed: isLoading ? null : (isRegistering ? _handleRegister : _handleLogin),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: Color(0xFF1E40AF),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         padding: EdgeInsets.symmetric(vertical: 14),
                       ),
-                      child: _isLoading
-                          ? CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E40AF)))
+                      child: isLoading
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E40AF)))
+                            )
                           : Text(isRegistering ? 'Register' : 'Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
                     SizedBox(height: 16),
                     TextButton(
-                      onPressed: () => setState(() => isRegistering = !isRegistering),
+                      onPressed: () => setState(() {
+                        isRegistering = !isRegistering;
+                        Provider.of<AppState>(context, listen: false).clearError();
+                      }),
                       child: Text(
-                        isRegistering ? 'Already have an account? Login' : 'Don’t have an account? Register',
+                        isRegistering ? 'Already have an account? Login' : 'Don't have an account? Register',
                         style: TextStyle(color: Colors.white70, fontSize: 16),
                       ),
                     ),
-                    if (message.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(top: 10),
-                        child: Text(message, style: TextStyle(color: Colors.red, fontSize: 14), textAlign: TextAlign.center),
-                      ),
                   ],
                 ),
               ),
@@ -146,9 +156,18 @@ Future<void> authenticate(String action) async {
           labelStyle: TextStyle(color: Colors.white),
           prefixIcon: Icon(icon, color: Colors.white),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+          errorStyle: TextStyle(color: Colors.redAccent[100]),
         ),
         style: TextStyle(color: Colors.white),
-        validator: (value) => value == null || value.isEmpty ? 'Please enter your $label' : null,
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return 'Please enter your $label';
+          }
+          if (label.toLowerCase().contains('email') && !RegExp(r"^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(value)) {
+             return 'Please enter a valid email';
+          }
+          return null;
+        },
       ),
     );
   }
@@ -172,8 +191,10 @@ Future<void> authenticate(String action) async {
           labelText: 'Role',
           labelStyle: TextStyle(color: Colors.white),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+          prefixIcon: Icon(Icons.assignment_ind, color: Colors.white),
         ),
         style: TextStyle(color: Colors.white),
+        validator: (value) => value == null ? 'Please select a role' : null,
       ),
     );
   }
