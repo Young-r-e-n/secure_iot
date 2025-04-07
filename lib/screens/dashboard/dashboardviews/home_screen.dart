@@ -1,6 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
+// import 'dart:convert'; // Remove if not needed elsewhere
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; // For formatting dates/times
+import 'package:provider/provider.dart'; // ✅ Add
+import '../../../providers/app_state.dart'; // ✅ Add
+import '../../../models/system_status.dart'; // ✅ Add
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,141 +14,160 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  Map<String, dynamic>? systemData;
-  bool isLoading = true;
-  String? error;
+  // Remove internal state managed by AppState
+  // Map<String, dynamic>? systemData;
+  // bool isLoading = true;
+  // String? error;
   String currentTime = '';
+  Timer? _clockTimer;
 
   final Color primaryColor = const Color(0xFF1E40AF);
   final Color cardColor = Colors.white;
   final Color backgroundColor = Color(0xFFF3F4F6);
+  final DateFormat _dateTimeFormatter = DateFormat('yyyy-MM-dd HH:mm:ss');
+  final DateFormat _timeFormatter = DateFormat('HH:mm:ss');
 
   @override
   void initState() {
     super.initState();
-    fetchSystemStatus();
+    // Data fetching is handled by AppState's polling or initial load
+    // fetchSystemStatus(); // Remove
     startClock();
-  }
-
-  void startClock() {
-    Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        currentTime = TimeOfDay.now().format(context);
-      });
-    });
-  }
-
-
-  // Future<void> fetchSystemStatus() async {
-  //   try {
-  //     final response =
-  //         await http.get(Uri.parse('http://raspberrypi.local/api/status'));
-
-  //     if (response.statusCode == 200) {
-  //       final data = json.decode(response.body);
-  //       setState(() {
-  //         systemData = data;
-  //         isLoading = false;
-  //       });
-  //     } else {
-  //       throw Exception('Failed to load system status');
-  //     }
-  //   } catch (e) {
-  //     setState(() {
-  //       error = e.toString();
-  //       isLoading = false;
-  //     });
-  //   }
-  // }
-
-
-  Future<void> fetchSystemStatus() async {
-    await Future.delayed(const Duration(seconds: 1)); // Fake API delay
-    const fakeJson = '''{
-      "status": "healthy",
-      "uptime": "3 days, 4 hours",
-      "storage": { "low_space": false, "used": "12GB", "total": "32GB" },
-      "last_maintenance": "2025-04-03T10:00:00Z",
-      "next_maintenance": "2025-05-03T10:00:00Z",
-      "errors": [],
-      "raspberry_pi": {
-        "is_online": true,
-        "last_heartbeat": "2025-04-05T10:30:00Z",
-        "firmware_version": "1.4.2",
-        "sensor_types": ["temperature", "motion"],
-        "total_events": 1024
-      },
-      "sensors": {
-        "tempSensor1": {
-          "name": "Temperature Sensor 1",
-          "isActive": true,
-          "last_check": "2025-04-05T10:25:00Z",
-          "event_count": 120,
-          "firmware_version": "1.0.0"
-        },
-        "motionSensor2": {
-          "name": "Motion Sensor 2",
-          "isActive": false,
-          "last_check": "2025-04-05T10:20:00Z",
-          "error": "No signal",
-          "event_count": 80,
-          "firmware_version": "2.1.0"
-        }
+    // Fetch initial data if needed (though AppState might handle this on login)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Ensure AppState is accessed after the first frame
+      final appState = Provider.of<AppState>(context, listen: false);
+      if (appState.currentStatus == null && !appState.isLoading) {
+         appState.fetchSystemStatus(); // Trigger fetch if no status yet
       }
-    }''';
-
-    final data = json.decode(fakeJson);
-    setState(() {
-      systemData = data;
-      isLoading = false;
     });
   }
 
   @override
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  void startClock() {
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) { // Check if widget is still mounted
+        setState(() {
+          currentTime = _timeFormatter.format(DateTime.now());
+        });
+      }
+    });
+  }
+
+  // Remove old fetchSystemStatus method
+  /*
+  Future<void> fetchSystemStatus() async {
+    // ... old code ...
+  }
+  */
+
+  @override
   Widget build(BuildContext context) {
+    // Consume AppState
+    final appState = context.watch<AppState>();
+    final isLoading = appState.isLoading && appState.currentStatus == null; // Show loading only if status is null
+    final error = appState.error;
+    final systemStatus = appState.currentStatus; // Use the typed model
+
     return Scaffold(
       backgroundColor: backgroundColor,
-   
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : error != null
-              ? Center(child: Text('Error: $error'))
-              : _buildDashboard(),
+          // Show error if there's an error and no status data is available
+          : error != null && systemStatus == null
+              ? Center(
+                  child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Error loading system status: $error', 
+                    style: TextStyle(color: Colors.red[700]),
+                    textAlign: TextAlign.center,
+                  ),
+                ))
+              // Show dashboard if status is available (even if there was a recent error)
+              : systemStatus != null
+                  ? _buildDashboard(systemStatus)
+                  // Handle case where not loading, no error, but status is still null (e.g., after logout)
+                  : const Center(child: Text('System status not available.')),
     );
   }
 
-  Widget _buildDashboard() {
-    final sensors = systemData!['sensors'] as Map<String, dynamic>;
-    final pi = systemData!['raspberry_pi'];
+  // Pass SystemStatus model to build methods
+  Widget _buildDashboard(SystemStatus systemData) {
+    final sensors = systemData.sensors; // Use typed Map<String, SensorStatus>
+    final pi = systemData.raspberryPi; // Use typed RaspberryPiStatus
+    final storage = systemData.storage;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _clockWidget(),
-          const SizedBox(height: 20),
+    return RefreshIndicator( // Add pull-to-refresh
+      onRefresh: () => Provider.of<AppState>(context, listen: false).fetchSystemStatus(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(), // Ensure scrollable even if content fits
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _clockWidget(),
+            const SizedBox(height: 20),
 
-          // System Overview
-          _dashboardSection("System Overview", [
-            _infoCard(Icons.health_and_safety, "Status", systemData!['status']),
-            _infoCard(Icons.timer, "Uptime", systemData!['uptime']),
-            _infoCard(Icons.sd_storage, "Storage Used", systemData!['storage']['used']),
-            _infoCard(Icons.warning, "Low Storage", systemData!['storage']['low_space'] ? "Yes" : "No"),
-          ]),
+            // System Overview
+            _dashboardSection("System Overview", [
+              _infoCard(Icons.monitor_heart, "Status", systemData.status, cardColor: _getStatusColor(systemData.status)),
+              _infoCard(Icons.timer_outlined, "Uptime", systemData.uptime),
+              _infoCard(Icons.sd_storage_outlined, "Storage Used", "${storage['used_gb'] ?? '?'} GB / ${storage['total_gb'] ?? '?'} GB"),
+              _infoCard(Icons.disc_full, "Low Storage", (storage['low_space'] ?? false) ? "Yes" : "No", cardColor: (storage['low_space'] ?? false) ? Colors.orange[100] : null),
+            ]),
 
-          _dashboardSection("Raspberry Pi", [
-            _infoCard(Icons.online_prediction, "Online", pi['is_online'] ? "Yes" : "No"),
-            _infoCard(Icons.access_time, "Last Heartbeat", pi['last_heartbeat']),
-            _infoCard(Icons.memory, "Firmware", pi['firmware_version']),
-            _infoCard(Icons.bar_chart, "Total Events", pi['total_events'].toString()),
-          ]),
+            _dashboardSection("Raspberry Pi", [
+              _infoCard(pi.isOnline ? Icons.link : Icons.link_off, "Online", pi.isOnline ? "Yes" : "No", cardColor: pi.isOnline ? Colors.green[100] : Colors.red[100]),
+              _infoCard(Icons.watch_later_outlined, "Last Heartbeat", _formatDateTime(pi.lastHeartbeat)),
+              _infoCard(Icons.memory_outlined, "Firmware", pi.firmwareVersion),
+              _infoCard(Icons.event_note, "Total Events", pi.totalEvents.toString()),
+            ]),
 
-          _sectionTitle("Sensors"),
-          ...sensors.entries.map((entry) => _sensorCard(entry.value)).toList(),
-        ],
+            _sectionTitle("Sensors (${sensors.length})"),
+            if (sensors.isEmpty)
+               const Padding(
+                 padding: EdgeInsets.symmetric(vertical: 16.0),
+                 child: Center(child: Text("No sensor data available.")),
+               )
+            else
+              ...sensors.values.map((sensor) => _sensorCard(sensor)).toList(), // Iterate over values
+          ],
+        ),
       ),
     );
   }
+
+  Color? _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'healthy':
+      case 'online':
+        return Colors.green[100];
+      case 'degraded':
+      case 'warning':
+        return Colors.orange[100];
+      case 'error':
+      case 'offline':
+        return Colors.red[100];
+      default:
+        return null;
+    }
+  }
+
+  String _formatDateTime(DateTime? dt) {
+     if (dt == null) return "N/A";
+     // Format relative time for recent timestamps?
+     // final now = DateTime.now();
+     // if (now.difference(dt).inHours < 24) {
+     //   return timeago.format(dt);
+     // }
+     return _dateTimeFormatter.format(dt);
+   }
 
   Widget _clockWidget() => Container(
         width: double.infinity,
@@ -152,11 +175,12 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: primaryColor,
           borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))]
         ),
         child: Column(
           children: [
             const Text(
-              "Live System Time",
+              "Current System Time", // Updated title
               style: TextStyle(color: Colors.white70, fontSize: 16),
             ),
             const SizedBox(height: 4),
@@ -177,153 +201,149 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           _sectionTitle(title),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: cards,
+          LayoutBuilder( // Use LayoutBuilder for responsive card layout
+            builder: (context, constraints) {
+              // Adjust crossAxisCount based on available width
+              int crossAxisCount = (constraints.maxWidth / 180).floor(); // Target width ~160 + spacing
+              crossAxisCount = crossAxisCount.clamp(1, 4); // Min 1, Max 4 cards per row
+              return GridView.count(
+                 crossAxisCount: crossAxisCount,
+                 shrinkWrap: true, // Important inside SingleChildScrollView
+                 physics: const NeverScrollableScrollPhysics(), // Grid itself shouldn't scroll
+                 mainAxisSpacing: 16,
+                 crossAxisSpacing: 16,
+                 childAspectRatio: 1.1, // Adjust aspect ratio if needed
+                 children: cards,
+               );
+            }
           ),
           const SizedBox(height: 20),
         ],
       );
 
   Widget _sectionTitle(String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.only(bottom: 8, top: 16), // Add top padding
         child: Text(
           title,
           style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: primaryColor,
+            fontSize: 20, // Slightly smaller
+            fontWeight: FontWeight.w600, // Adjusted weight
+            color: Colors.grey[800],
           ),
         ),
       );
 
-  Widget _infoCard(IconData icon, String label, String value) => Container(
-        width: 160,
+  Widget _infoCard(IconData icon, String label, String value, {Color? cardColor}) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(16),
+          color: cardColor ?? this.cardColor, // Use provided color or default
+          borderRadius: BorderRadius.circular(12), // Slightly smaller radius
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(2, 2),
+              blurRadius: 6, // Reduced blur
+              offset: const Offset(0, 2), // Adjusted offset
             ),
           ],
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center, // Center content
           children: [
-            Icon(icon, color: primaryColor, size: 30),
-            const SizedBox(height: 10),
-            Text(label,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            Icon(icon, color: primaryColor, size: 28), // Slightly smaller icon
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: Colors.black87), // Adjusted style
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 4),
-            Text(value,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black54)),
+            Text(
+              value,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w600), // Adjusted style
+               maxLines: 2,
+               overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
       );
 
-Widget _sensorCard(dynamic sensor) {
-  final isActive = sensor['isActive'] ?? false;
-  final error = sensor['error'];
+// Use typed SensorStatus model
+Widget _sensorCard(SensorStatus sensor) {
+  final isActive = sensor.isActive;
+  final error = sensor.error;
+  final hasError = error != null && error.isNotEmpty;
 
   return Card(
-    elevation: 4,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    color: Color.fromARGB(255, 255, 255, 255),
-    margin: const EdgeInsets.symmetric(vertical: 8),
+    elevation: 2, // Reduced elevation
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    color: hasError ? Colors.red[50] : (isActive ? Colors.green[50] : Colors.grey[100]), // Color based on state
+    margin: const EdgeInsets.symmetric(vertical: 6),
     child: Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(
-                isActive ? Icons.sensors : Icons.sensors_off,
-                color: isActive ? Colors.green : Colors.grey,
-                size: 28,
+              Row(
+                 children: [
+                    Icon(
+                      hasError ? Icons.error_outline : (isActive ? Icons.check_circle_outline : Icons.pause_circle_outline),
+                      color: hasError ? Colors.red[700] : (isActive ? Colors.green[700] : Colors.grey[600]),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      sensor.name,
+                      style: TextStyle(
+                         fontSize: 16,
+                         fontWeight: FontWeight.w600,
+                         color: Colors.grey[850],
+                      ),
+                    ),
+                 ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  sensor['name'],
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
-                  ),
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isActive ? Colors.green[100] : Colors.grey[300],
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  isActive ? 'Active' : 'Inactive',
-                  style: TextStyle(
-                    color: isActive ? Colors.green[800] : Colors.grey[800],
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-              )
+              // Optional: Add indicator for type or location
+              if (sensor.type != null)
+                 Chip(
+                   label: Text(sensor.type!, style: TextStyle(fontSize: 10)),
+                   padding: EdgeInsets.zero,
+                   visualDensity: VisualDensity.compact,
+                   backgroundColor: Colors.blue[50],
+                 )
             ],
           ),
-          const Divider(height: 20, thickness: 1),
-          _infoRow(Icons.access_time, 'Last Check', sensor['last_check']),
-          _infoRow(Icons.memory, 'Firmware', sensor['firmware_version'] ?? 'N/A',
-              valueColor: Colors.blueGrey[800]),
-          _infoRow(Icons.bar_chart, 'Event Count',
-              sensor['event_count'].toString()),
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.error, color: Colors.redAccent, size: 20),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Error: $error',
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  )
-                ],
-              ),
-            ),
+          const SizedBox(height: 8),
+          if (hasError)
+            Text(
+              "Error: $error",
+              style: TextStyle(color: Colors.red[700], fontSize: 13),
+            )
+          else
+             Text(
+               "Status: ${isActive ? 'Active' : 'Inactive'}",
+               style: TextStyle(color: Colors.grey[700], fontSize: 13),
+             ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+               Text(
+                 "Last Check: ${_formatDateTime(sensor.lastCheck)}",
+                 style: TextStyle(color: Colors.grey[600], fontSize: 12),
+               ),
+               Text(
+                 "Events: ${sensor.eventCount}",
+                 style: TextStyle(color: Colors.grey[600], fontSize: 12),
+               ),
+            ],
+          ),
         ],
       ),
     ),
   );
 }
 
-Widget _infoRow(IconData icon, String label, String value,
-    {Color? valueColor}) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(
-      children: [
-        Icon(icon, size: 20, color: Colors.grey[700]),
-        const SizedBox(width: 10),
-        Text(
-          '$label: ',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(color: valueColor ?? Colors.black87),
-          ),
-        ),
-      ],
-    ),
-  );
-}
 }
