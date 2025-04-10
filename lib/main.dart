@@ -18,10 +18,11 @@ class MyApp extends StatelessWidget {
       create: (_) => AppState(), // ✅ Provide your AppState here
       child: MaterialApp(
         title: 'Server_security',
+        debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         ),
-        initialRoute: '/',
+        initialRoute: '/dashboard',
         routes: {
           '/': (context) => OnboardingScreen(),
           '/login': (context) => LoginRegisterScreen(),

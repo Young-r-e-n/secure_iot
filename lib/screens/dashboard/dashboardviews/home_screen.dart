@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,6 +13,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool isAuthenticated = false;
+
   Map<String, dynamic>? systemData;
   bool isLoading = true;
   String? error;
@@ -19,10 +24,15 @@ class _HomeScreenState extends State<HomeScreen> {
   final Color cardColor = Colors.white;
   final Color backgroundColor = Color(0xFFF3F4F6);
 
+
+final TextEditingController _urlController = TextEditingController();
+String? _accessToken;
+
   @override
   void initState() {
     super.initState();
     fetchSystemStatus();
+    _loadAuthData();
     startClock();
   }
 
@@ -34,82 +44,131 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+Future<void> _loadAuthData() async {
+  final prefs = await SharedPreferences.getInstance();
+  final savedUrl = prefs.getString('base_url');
+  final savedToken = prefs.getString('access_token');
 
-  // Future<void> fetchSystemStatus() async {
-  //   try {
-  //     final response =
-  //         await http.get(Uri.parse('http://raspberrypi.local/api/status'));
-
-  //     if (response.statusCode == 200) {
-  //       final data = json.decode(response.body);
-  //       setState(() {
-  //         systemData = data;
-  //         isLoading = false;
-  //       });
-  //     } else {
-  //       throw Exception('Failed to load system status');
-  //     }
-  //   } catch (e) {
-  //     setState(() {
-  //       error = e.toString();
-  //       isLoading = false;
-  //     });
-  //   }
-  // }
+  if (savedUrl != null && savedToken != null) {
+    _urlController.text = savedUrl;
+    _accessToken = savedToken;
+    setState(() {
+      isAuthenticated = true;
+    });
+    fetchSystemStatus(savedUrl);
+  }
+}
 
 
-  Future<void> fetchSystemStatus() async {
-    await Future.delayed(const Duration(seconds: 1)); // Fake API delay
-    const fakeJson = '''{
-      "status": "healthy",
-      "uptime": "3 days, 4 hours",
-      "storage": { "low_space": false, "used": "12GB", "total": "32GB" },
-      "last_maintenance": "2025-04-03T10:00:00Z",
-      "next_maintenance": "2025-05-03T10:00:00Z",
-      "errors": [],
-      "raspberry_pi": {
-        "is_online": true,
-        "last_heartbeat": "2025-04-05T10:30:00Z",
-        "firmware_version": "1.4.2",
-        "sensor_types": ["temperature", "motion"],
-        "total_events": 1024
-      },
-      "sensors": {
-        "tempSensor1": {
-          "name": "Temperature Sensor 1",
-          "isActive": true,
-          "last_check": "2025-04-05T10:25:00Z",
-          "event_count": 120,
-          "firmware_version": "1.0.0"
-        },
-        "motionSensor2": {
-          "name": "Motion Sensor 2",
-          "isActive": false,
-          "last_check": "2025-04-05T10:20:00Z",
-          "error": "No signal",
-          "event_count": 80,
-          "firmware_version": "2.1.0"
-        }
-      }
-    }''';
+Future<void> authenticateAndFetchStatus() async {
+  final url = _urlController.text.trim();
+  if (url.isEmpty) return;
 
-    final data = json.decode(fakeJson);
+  final tokenUrl = Uri.parse('$url/token');
+  try {
+    final response = await http.post(
+      tokenUrl,
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'username=admin&password=admin123',
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      _accessToken = data['access_token'];
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('base_url', url);
+      await prefs.setString('access_token', _accessToken!);
+
+      setState(() {
+        isAuthenticated = true;
+      });
+
+      fetchSystemStatus(url);
+    } else {
+      throw Exception('Failed to authenticate: ${response.body}');
+    }
+  } catch (e) {
+    setState(() {
+      error = 'Auth error: $e';
+      isLoading = false;
+    });
+  }
+}
+
+
+Future<void> fetchSystemStatus([String? baseUrl]) async {
+  setState(() {
+    isLoading = true;
+    error = null;
+  });
+
+try {
+  final base = baseUrl ?? _urlController.text.trim();
+  final url = Uri.parse('$base/status');
+  print('Requesting: $url');
+
+  final headers = <String, String>{};
+  if (_accessToken != null && _accessToken!.isNotEmpty) {
+    headers['Authorization'] = 'Bearer $_accessToken';
+  }
+
+  final response = await http.get(url, headers: headers);
+  print('Response: ${response.body}');
+
+  if (response.statusCode == 200) {
+    final data = json.decode(response.body);
     setState(() {
       systemData = data;
       isLoading = false;
     });
+  } else {
+    throw Exception('Failed to load system status: ${response.statusCode}');
   }
+} catch (e) {
+  setState(() {
+    error = e.toString();
+    isLoading = false;
+  });
+}
+
+}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
    
-      body: isLoading
+      body: Padding(
+  padding: const EdgeInsets.all(16),
+  child: Column(
+  children: [
+    if (!isAuthenticated) ...[
+      TextField(
+        controller: _urlController,
+        decoration: InputDecoration(
+          labelText: 'Enter Base URL',
+          hintText: 'e.g., https://your-api.com',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      const SizedBox(height: 10),
+      ElevatedButton(
+        onPressed: authenticateAndFetchStatus,
+        child: const Text('Authenticate & Load System'),
+      ),
+      const SizedBox(height: 20),
+    ],
+    Expanded(
+      child: isLoading
           ? const Center(child: CircularProgressIndicator())
           : error != null
               ? Center(child: Text('Error: $error'))
               : _buildDashboard(),
+    ),
+  ],
+),
+),
     );
   }
 
@@ -125,19 +184,19 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
 
           // System Overview
-          _dashboardSection("System Overview", [
-            _infoCard(Icons.health_and_safety, "Status", systemData!['status']),
-            _infoCard(Icons.timer, "Uptime", systemData!['uptime']),
-            _infoCard(Icons.sd_storage, "Storage Used", systemData!['storage']['used']),
-            _infoCard(Icons.warning, "Low Storage", systemData!['storage']['low_space'] ? "Yes" : "No"),
-          ]),
+     _dashboardSection("System Overview", [
+  _infoCard(Icons.health_and_safety, "Status", (systemData!['status'] ?? 'N/A').toString()),
+  _infoCard(Icons.timer, "Uptime", (systemData!['uptime'] ?? 'N/A').toString()),
+  _infoCard(Icons.sd_storage, "Storage Used", (systemData!['storage']?['used'] ?? 'N/A').toString()),
+  _infoCard(Icons.warning, "Low Storage", (systemData!['storage']?['low_space'] ?? false) ? "Yes" : "No"),
+]),
 
-          _dashboardSection("Raspberry Pi", [
-            _infoCard(Icons.online_prediction, "Online", pi['is_online'] ? "Yes" : "No"),
-            _infoCard(Icons.access_time, "Last Heartbeat", pi['last_heartbeat']),
-            _infoCard(Icons.memory, "Firmware", pi['firmware_version']),
-            _infoCard(Icons.bar_chart, "Total Events", pi['total_events'].toString()),
-          ]),
+       _dashboardSection("Raspberry Pi", [
+  _infoCard(Icons.online_prediction, "Online", (pi?['is_online'] ?? false) ? "Yes" : "No"),
+  _infoCard(Icons.access_time, "Last Heartbeat", (pi?['last_heartbeat'] ?? 'N/A').toString()),
+  _infoCard(Icons.memory, "Firmware", (pi?['firmware_version'] ?? 'Unknown').toString()),
+  _infoCard(Icons.bar_chart, "Total Events", (pi?['total_events'] ?? 0).toString()),
+]),
 
           _sectionTitle("Sensors"),
           ...sensors.entries.map((entry) => _sensorCard(entry.value)).toList(),
