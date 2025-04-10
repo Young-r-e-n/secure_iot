@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:security_iot/screens/dashboard/dashboardviews/control_and_alert_screen.dart';
-import 'package:security_iot/screens/dashboard/dashboardviews/controls_screen.dart';
 import 'package:security_iot/screens/dashboard/dashboardviews/home_screen.dart';
 import 'package:security_iot/screens/dashboard/dashboardviews/logs_screen.dart';
 import 'dart:convert';
@@ -56,33 +55,30 @@ Future<void> _initializeNetworkService() async {
 
 
 
-  Future<void> _logout() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/logout'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        await prefs.clear();
-        Navigator.pushReplacementNamed(context, '/login');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Logout failed, please try again.')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+Future<void> _logout() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Check if 'access_token' and 'base_url' are stored, then remove them
+    bool hasAccessToken = prefs.containsKey('access_token');
+    bool hasBaseUrl = prefs.containsKey('base_url');
+    
+    if (hasAccessToken) {
+      await prefs.remove('access_token');
     }
+    if (hasBaseUrl) {
+      await prefs.remove('base_url');
+    }
+    
+    // Navigate to login screen after clearing data
+    Navigator.pushReplacementNamed(context, '/login');
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Logout error: $e')),
+    );
   }
+}
+
 
   @override
 Widget build(BuildContext context) {
@@ -112,8 +108,8 @@ Widget build(BuildContext context) {
   Widget _buildBottomNavigationBar() {
     return BottomNavigationBar(
       currentIndex: _currentIndex,
-      onTap: (index) {
-  if (index == 6) {
+onTap: (index) {
+  if (index == 5 || (index == 2 && widget.role != 'Admin')) {
     _logout();
   } else {
     setState(() {
@@ -121,6 +117,7 @@ Widget build(BuildContext context) {
     });
   }
 },
+
 
       selectedItemColor: Color(0xFF1E40AF),
       unselectedItemColor: Colors.grey,
@@ -144,15 +141,11 @@ Widget build(BuildContext context) {
     icon: Icon(Icons.notification_important),
     label: 'Notifications',
   ),
+  if (widget.role == 'Admin')
   BottomNavigationBarItem(
     icon: Icon(Icons.group),
     label: 'Users',
   ),
-  if (widget.role == 'Admin')
-    BottomNavigationBarItem(
-      icon: Icon(Icons.security),
-      label: 'Controls & Alerts',
-    ),
   BottomNavigationBarItem(
     icon: Icon(Icons.exit_to_app),
     label: 'Logout',
@@ -167,21 +160,20 @@ Widget build(BuildContext context) {
  Widget _getRoleBasedWidget(int index) {
   if (widget.role != 'Admin') {
     if (index == 0) return HomeScreen();
-    if (index == 1) return LogsScreen();
+    if (index == 1) return NotificationsScreen();
+    
   }
 
   switch (index) {
     case 0: return HomeScreen();
-    case 1: return ControlsScreen();
-    case 2: return LogsScreen();
-    case 3: return NotificationsScreen();
-    case 4: return ManageUsersScreen();
-    case 5:
-      if (networkService != null) {
+    case 1:  if (networkService != null) {
         return ControlAndAlertScreen(networkService: networkService!);
       } else {
         return const Center(child: Text('Network Service not available'));
       }
+    case 2: return LogsScreen();
+    case 3: return NotificationsScreen();
+    case 4: return ManageUsersScreen();
     default: return const Center(child: Text('Invalid Option'));
   }
 }

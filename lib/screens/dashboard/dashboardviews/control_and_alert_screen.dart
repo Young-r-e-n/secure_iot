@@ -17,6 +17,9 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen> {
   String? _result;
   Map<String, dynamic>? _statusData;
 
+  String _doorSelection = 'lock';
+  String _windowSelection = 'lock';
+
   @override
   void initState() {
     super.initState();
@@ -40,7 +43,7 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen> {
     try {
       final res = await widget.networkService.sendControlCommand(action, params);
       setState(() => _result = res['message'] ?? 'Success');
-      await _fetchStatus(); // Refresh status after action
+      await _fetchStatus();
     } catch (e) {
       setState(() => _result = 'Control error: $e');
     } finally {
@@ -88,15 +91,57 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen> {
     }
 
     return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: ListTile(
-        leading: Icon(icon, color: isActive ? Colors.green : Colors.grey),
-        title: Text(name.toUpperCase()),
+        leading: CircleAvatar(
+          backgroundColor: isActive ? Colors.green[600] : Colors.grey[400],
+          child: Icon(icon, color: Colors.white),
+        ),
+        title: Text(name.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text("Active: $isActive"),
-        trailing: sensor['data'] != null
-            ? Text(sensor['data'].toString())
-            : const SizedBox.shrink(),
+        trailing: sensor['data'] != null ? Text(sensor['data'].toString()) : null,
       ),
+    );
+  }
+
+  Widget _buildDeviceControlTile({
+    required String label,
+    required String target,
+    required String selection,
+    required ValueChanged<String> onSelectionChanged,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 16)),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'lock', label: Text("Lock")),
+            ButtonSegment(value: 'unlock', label: Text("Unlock")),
+          ],
+          selected: <String>{selection},
+          onSelectionChanged: (Set<String> value) {
+            final newValue = value.first;
+            onSelectionChanged(newValue);
+            _sendControl(newValue, {'target': target});
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControlButton(IconData icon, String label, VoidCallback onPressed) {
+    return ElevatedButton.icon(
+      icon: Icon(icon),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        backgroundColor: Colors.blue[700],
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      onPressed: onPressed,
     );
   }
 
@@ -105,62 +150,127 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen> {
     final sensors = _statusData?['sensors'] ?? {};
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Controls & System Status')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text(
+          'Controls & System Status',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.blue[900],
+        elevation: 0.5,
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _fetchStatus,
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
                 physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text("System Status: ${_statusData?['status'] ?? 'N/A'}",
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 16),
+                    // SYSTEM STATUS
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          "System Status: ${_statusData?['status'] ?? 'N/A'}",
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // SENSOR STATUS
                     if (sensors.isNotEmpty)
                       ...sensors.entries.map((e) => _buildStatusTile(e.key, e.value)),
                     const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.lock),
-                      label: const Text('Lock Door'),
-                      onPressed: () => _sendControl('lock'),
-                    ),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.lock_open),
-                      label: const Text('Unlock Window'),
-                      onPressed: () => _sendControl('unlock', {'target': 'window'}),
-                    ),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Capture Image'),
-                      onPressed: () => _sendControl('capture_image'),
-                    ),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.videocam),
-                      label: const Text('Record 10s Video'),
-                      onPressed: () => _sendControl('record_video', {'duration': 10}),
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: _alertController,
-                      decoration: const InputDecoration(
-                        labelText: 'Alert Message',
-                        border: OutlineInputBorder(),
+
+                    // ACCESS CONTROL
+                    Card(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Access Control", style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 12),
+                            _buildDeviceControlTile(
+                              label: "Door",
+                              target: "door",
+                              selection: _doorSelection,
+                              onSelectionChanged: (val) => setState(() => _doorSelection = val),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildDeviceControlTile(
+                              label: "Window",
+                              target: "window",
+                              selection: _windowSelection,
+                              onSelectionChanged: (val) => setState(() => _windowSelection = val),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.warning),
-                      label: const Text('Send Alert'),
-                      onPressed: _sendAlert,
+                    const SizedBox(height: 24),
+
+                    // SURVEILLANCE
+                    Card(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Surveillance", style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 12),
+                            _buildControlButton(Icons.camera_alt, 'Capture Image', () => _sendControl('capture_image')),
+                            const SizedBox(height: 10),
+                            _buildControlButton(Icons.videocam, 'Record 10s Video',
+                                () => _sendControl('record_video', {'duration': 10})),
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 24),
+
+                    // ALERTS
+                    Card(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Send Alert", style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _alertController,
+                              decoration: InputDecoration(
+                                labelText: 'Alert Message',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildControlButton(Icons.warning, 'Send Alert', _sendAlert),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // RESULT MESSAGE
                     if (_result != null)
                       Text(
                         _result!,
-                        style: const TextStyle(color: Colors.blueAccent),
+                        style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.w500),
                       ),
                   ],
                 ),

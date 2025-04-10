@@ -112,36 +112,67 @@ class _LogsScreenState extends State<LogsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('System Logs'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _exportLogs,
-            tooltip: 'Export Logs',
-          ),
-        ],
-      ),
+  appBar: AppBar(
+  automaticallyImplyLeading: false,  // Removes the back button
+  title: Text(
+    'System Logs',
+    style: TextStyle(
+      fontSize: 24.0, // Adjust font size to make it look nicer
+      fontWeight: FontWeight.bold, // Makes the text bold
+      color: const Color.fromARGB(255, 11, 85, 146), // Sets the text color (you can adjust this to your liking)
+    ),
+  ),
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.share),
+      onPressed: _exportLogs,
+      tooltip: 'Export Logs',
+    ),
+  ],
+),
+
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: DropdownButton<String>(
-              value: _selectedSeverity,
-              items: const [
-                DropdownMenuItem(value: 'all', child: Text('All')),
-                DropdownMenuItem(value: 'info', child: Text('Info')),
-                DropdownMenuItem(value: 'warning', child: Text('Warning')),
-                DropdownMenuItem(value: 'error', child: Text('Error')),
-                DropdownMenuItem(value: 'critical', child: Text('Critical')),
-              ],
-              onChanged: (value) {
-                if (value != null) _filterLogs(value);
-              },
-              isExpanded: true,
-              underline: Container(height: 2, color: Colors.blueAccent),
-            ),
-          ),
+Padding(
+  padding: const EdgeInsets.all(8.0),
+  child: Container(
+    decoration: BoxDecoration(
+      color: Colors.blue.shade50, // Light background color
+      borderRadius: BorderRadius.circular(12.0), // Rounded corners
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black26,
+          offset: Offset(0, 2),
+          blurRadius: 4.0,
+        ),
+      ],
+    ),
+    child: DropdownButton<String>(
+      value: _selectedSeverity,
+      items: const [
+        DropdownMenuItem(value: 'all', child: Text('All')),
+        DropdownMenuItem(value: 'info', child: Text('Info')),
+        DropdownMenuItem(value: 'warning', child: Text('Warning')),
+        DropdownMenuItem(value: 'error', child: Text('Error')),
+        DropdownMenuItem(value: 'critical', child: Text('Critical')),
+      ],
+      onChanged: (value) {
+        if (value != null) _filterLogs(value);
+      },
+      isExpanded: true,
+      style: TextStyle(
+        fontSize: 16.0, // Text size
+        fontWeight: FontWeight.bold, // Bold text
+        color: Colors.black, // Text color
+      ),
+      underline: Container(
+        height: 2,
+        color: const Color.fromARGB(255, 3, 21, 51), // Custom underline color
+      ),
+    ),
+  ),
+),
+
           Expanded(
             child: FutureBuilder<List<Map<String, dynamic>>>(
               future: _logsFuture,

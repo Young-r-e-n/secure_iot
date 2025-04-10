@@ -28,13 +28,18 @@ class _HomeScreenState extends State<HomeScreen> {
 final TextEditingController _urlController = TextEditingController();
 String? _accessToken;
 
-  @override
-  void initState() {
-    super.initState();
-    fetchSystemStatus();
-    _loadAuthData();
-    startClock();
+@override
+void initState() {
+  super.initState();
+  _loadAuthData(); // Load saved authentication data
+
+  // Check if URL is available before trying to fetch system status
+  if (_urlController.text.isNotEmpty) {
+    fetchSystemStatus(); // Only fetch if URL is not empty
   }
+
+  startClock();
+}
 
   void startClock() {
     Timer.periodic(const Duration(seconds: 1), (timer) {

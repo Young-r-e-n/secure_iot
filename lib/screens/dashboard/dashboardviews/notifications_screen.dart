@@ -11,8 +11,8 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final TextEditingController _controller = TextEditingController();
-  final String fetchUrl = 'https://yourdomain.com/api/get_notifications.php';
-  final String sendUrl = 'https://yourdomain.com/api/send_notification.php';
+  final String fetchUrl = 'https://clarence.fhmconsultants.com/api/get_notifications.php';
+  final String sendUrl = 'https://clarence.fhmconsultants.com/api/send_notification.php';
   List<Map<String, dynamic>> notifications = [];
   bool isLoading = false;
   String? error;
