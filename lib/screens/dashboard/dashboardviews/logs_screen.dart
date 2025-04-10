@@ -1,11 +1,100 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:security_iot/providers/app_state.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:security_iot/services/network_service.dart';
+import 'package:share_plus/share_plus.dart';
 
-class LogsScreen extends StatelessWidget {
-  const LogsScreen({super.key});
+
+class LogsScreen extends StatefulWidget {
+  const LogsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<LogsScreen> createState() => _LogsScreenState();
+}
+
+class _LogsScreenState extends State<LogsScreen> {
+  late Future<List<Map<String, dynamic>>> _logsFuture;
+  List<Map<String, dynamic>> _allLogs = [];
+  List<Map<String, dynamic>> _filteredLogs = [];
+  String _selectedSeverity = 'all';
+
+  @override
+  void initState() {
+    super.initState();
+    _logsFuture = _fetchLogs();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchLogs() async {
+    final service = await NetworkService.create();
+    final logs = await service.getLogs();
+    _allLogs = logs;
+    _filteredLogs = logs;
+    return logs;
+  }
+
+  void _filterLogs(String severity) {
+    setState(() {
+      _selectedSeverity = severity;
+      if (severity == 'all') {
+        _filteredLogs = _allLogs;
+      } else {
+        _filteredLogs =
+            _allLogs.where((log) => log['severity'] == severity).toList();
+      }
+    });
+  }
+
+  void _exportLogs() {
+    final exportData = jsonEncode(_filteredLogs);
+    Share.share(exportData, subject: 'Exported Logs');
+  }
+
+  void _showLogDetails(Map<String, dynamic> log) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(log['event_type'] ?? 'Log Details'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailRow('Timestamp', log['timestamp']),
+              _buildDetailRow('Severity', log['severity']),
+              _buildDetailRow('Source', log['source']),
+              const Divider(),
+              _buildDetailRow('Message', log['details']['message']),
+              const SizedBox(height: 8),
+              Text('Sensor Data:', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(jsonEncode(log['details']['sensor_data'])),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String title, dynamic value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: RichText(
+        text: TextSpan(
+          style: DefaultTextStyle.of(context).style,
+          children: [
+            TextSpan(
+              text: '$title: ',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            TextSpan(text: value?.toString() ?? 'N/A'),
+          ],
+        ),
+      ),
+    );
+  }
 
   Color _severityColor(String severity) {
     switch (severity) {
@@ -20,75 +109,76 @@ class LogsScreen extends StatelessWidget {
     }
   }
 
-  IconData _sourceIcon(String source) {
-    switch (source) {
-      case 'camera':
-        return Icons.videocam;
-      case 'sensor':
-        return Icons.sensors;
-      case 'rfid':
-        return Icons.rss_feed;
-      case 'user':
-        return Icons.person;
-      case 'system':
-      default:
-        return Icons.memory;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final logs = appState.logs;
-
     return Scaffold(
-      body: appState.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : logs.isEmpty
-              ? const Center(child: Text("No logs available."))
-              : ListView.builder(
-                  itemCount: logs.length,
+      appBar: AppBar(
+        title: const Text('System Logs'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: _exportLogs,
+            tooltip: 'Export Logs',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: DropdownButton<String>(
+              value: _selectedSeverity,
+              items: const [
+                DropdownMenuItem(value: 'all', child: Text('All')),
+                DropdownMenuItem(value: 'info', child: Text('Info')),
+                DropdownMenuItem(value: 'warning', child: Text('Warning')),
+                DropdownMenuItem(value: 'error', child: Text('Error')),
+                DropdownMenuItem(value: 'critical', child: Text('Critical')),
+              ],
+              onChanged: (value) {
+                if (value != null) _filterLogs(value);
+              },
+              isExpanded: true,
+              underline: Container(height: 2, color: Colors.blueAccent),
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _logsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                } else if (_filteredLogs.isEmpty) {
+                  return const Center(child: Text('No logs available.'));
+                }
+
+                return ListView.builder(
+                  itemCount: _filteredLogs.length,
                   itemBuilder: (context, index) {
-                    final log = logs[index];
+                    final log = _filteredLogs[index];
                     final severity = log['severity'] ?? 'info';
-                    final source = log['source'] ?? 'system';
+                    final color = _severityColor(severity);
+                    final message = log['details']['message'] ?? 'No message';
                     final timestamp = log['timestamp'] ?? '';
-                    final eventType = log['event_type'] ?? 'Event';
-                    final hasVideo = log['video_url'] != null;
 
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      color: color.withOpacity(0.1),
                       child: ListTile(
-                        leading: Icon(
-                          _sourceIcon(source),
-                          color: _severityColor(severity),
-                        ),
-                        title: Text(eventType),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Source: $source"),
-                            Text("Time: $timestamp"),
-                            if (hasVideo)
-                              const Text("🎥 Video attached", style: TextStyle(fontStyle: FontStyle.italic)),
-                          ],
-                        ),
-                        trailing: Text(
-                          severity.toUpperCase(),
-                          style: TextStyle(
-                            color: _severityColor(severity),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        leading: Icon(Icons.security, color: color),
+                        title: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(timestamp),
+                        trailing: Text(severity.toUpperCase(), style: TextStyle(color: color)),
+                        onTap: () => _showLogDetails(log),
                       ),
                     );
                   },
-                ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          context.read<AppState>().loadLogsFromJson();
-        },
-        child: const Icon(Icons.refresh),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
