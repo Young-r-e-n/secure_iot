@@ -111,6 +111,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           itemBuilder: (context, index) {
                             final item = notifications[index];
                             return Card(
+                                color:Colors.white,
                               child: ListTile(
                                 title: Text(item['message'] ?? 'No message'),
                                 subtitle: Text(item['sender'] ?? 'Unknown sender'),

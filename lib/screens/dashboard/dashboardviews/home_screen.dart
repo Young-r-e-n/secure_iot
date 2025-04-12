@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 
@@ -44,7 +45,7 @@ void initState() {
   void startClock() {
     Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
-        currentTime = TimeOfDay.now().format(context);
+         currentTime = DateFormat('hh:mm:ss a').format(DateTime.now());
       });
     });
   }
@@ -158,10 +159,24 @@ try {
         ),
       ),
       const SizedBox(height: 10),
-      ElevatedButton(
-        onPressed: authenticateAndFetchStatus,
-        child: const Text('Authenticate & Load System'),
-      ),
+    ElevatedButton(
+  onPressed: authenticateAndFetchStatus,
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Color(0xFF1E40AF), // Button background color
+    foregroundColor: Colors.white, // Text color
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+    textStyle: const TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.bold,
+    ),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12), // Rounded corners
+    ),
+    elevation: 5, // Shadow effect
+  ),
+  child: const Text('🔐 Authenticate & Load System'),
+),
+
       const SizedBox(height: 20),
     ],
     Expanded(

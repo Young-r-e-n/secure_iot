@@ -129,21 +129,21 @@ onTap: (index) {
   ),
   if (widget.role == 'Admin')
     BottomNavigationBarItem(
-      icon: Icon(Icons.devices),
+      icon: Icon(Icons.toggle_on),
       label: 'Control',
     ),
   if (widget.role == 'Admin')
     BottomNavigationBarItem(
-      icon: Icon(Icons.file_copy),
+      icon:Icon(Icons.history),
       label: 'Logs',
     ),
   BottomNavigationBarItem(
-    icon: Icon(Icons.notification_important),
+    icon: Icon(Icons.notifications),
     label: 'Notifications',
   ),
   if (widget.role == 'Admin')
   BottomNavigationBarItem(
-    icon: Icon(Icons.group),
+    icon: Icon(Icons.people),
     label: 'Users',
   ),
   BottomNavigationBarItem(

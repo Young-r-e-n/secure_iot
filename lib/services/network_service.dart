@@ -21,10 +21,12 @@ class NetworkService {
     return NetworkService._internal(baseUrl: baseUrl, token: token);
   }
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
+Map<String, String> get _headers => {
+  'Content-Type': 'application/json',
+  'Authorization': 'Bearer $token',
+  'ngrok-skip-browser-warning': 'true',
+};
+
 
   Future<Map<String, dynamic>> sendControlCommand(String action,
       [Map<String, dynamic>? parameters]) async {
@@ -97,6 +99,17 @@ Future<List<Map<String, dynamic>>> getLogs() async {
   } else {
     throw Exception('Failed to load logs: ${response.statusCode}');
   }
+}
+
+Future<Map<String, dynamic>> testAllSensors() async {
+  final response = await http.post(
+    Uri.parse('$baseUrl/api/v1/control'),
+    headers: _headers,
+    body: jsonEncode({
+      'action': 'test_sensors',
+    }),
+  );
+  return _handleResponse(response);
 }
 
 
