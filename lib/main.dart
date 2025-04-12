@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Color(0xFF1E40AF)),
         ),
-        initialRoute: '/dashboard',
+        initialRoute: '/',
         routes: {
           '/': (context) => OnboardingScreen(),
           '/login': (context) => LoginRegisterScreen(),
