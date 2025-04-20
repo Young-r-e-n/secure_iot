@@ -105,7 +105,7 @@ class _LogsScreenState extends State<LogsScreen> {
       case 'warning':
         return Colors.orange;
       case 'user':
-        return Colors.orange;
+        return Colors.purple;
       default:
         return Colors.green;
     }
