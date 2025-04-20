@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:security_iot/screens/url_setup_screen.dart';
 import 'dart:convert';
-import '../dashboard/dashboard_screen.dart';
+
 
 class LoginRegisterScreen extends StatefulWidget {
   const LoginRegisterScreen({super.key});
@@ -47,8 +48,10 @@ Future<void> authenticate(String action) async {
     if (responseData.containsKey('success') && responseData['success']) {
       if (action == 'login') {
         Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => DashboardScreen(role: responseData['role'])),
+            context,
+  MaterialPageRoute(
+    builder: (context) => UrlSetupScreen(role: responseData['role']),
+  ),
         );
       } else {
         setState(() => message = responseData['message']);

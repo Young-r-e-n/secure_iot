@@ -11,6 +11,8 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
   late Future<List<dynamic>> _usersFuture;
   final String baseUrl = "https://clarence.fhmconsultants.com/api"; // Set your base URL
 
+
+
   @override
   void initState() {
     super.initState();
@@ -49,13 +51,55 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     }
   }
 
-  Future<void> deleteUser(int id) async {
-    await http.post(Uri.parse('$baseUrl/users.php?action=delete'),
-        body: {'id': id.toString()});
-    setState(() {
-      _usersFuture = fetchUsers(); // Refresh after delete
-    });
+
+Future<void> deleteUser(int id, BuildContext context) async {
+  // Show a loading dialog
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => Center(child: CircularProgressIndicator()),
+  );
+
+  final response = await http.post(
+    Uri.parse('$baseUrl/users.php?action=delete'),
+    body: {'id': id.toString()},
+  );
+
+  Navigator.of(context).pop(); // Close the loading dialog
+
+  if (response.statusCode == 200) {
+    final result = jsonDecode(response.body);
+    final message = result['message'] ?? 'No message received';
+
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ $message'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      setState(() {
+        _usersFuture = fetchUsers(); // Refresh the list
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚠️ $message'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('❌ Error ${response.statusCode}: Failed to delete user'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
+}
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +131,13 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
                     ),
                     IconButton(
                       icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => deleteUser(users[index]['id']),
+onPressed: () => deleteUser(
+  int.parse(users[index]['id'].toString()), // force to int
+  context,
+),
+
+
+
                     ),
                   ],
                 ),
@@ -104,79 +154,133 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     );
   }
 
-  void _showAddUserDialog(BuildContext context) {
-    TextEditingController nameController = TextEditingController();
-    TextEditingController emailController = TextEditingController();
-    TextEditingController passwordController = TextEditingController();
-    TextEditingController roleController = TextEditingController();
+void _showAddUserDialog(BuildContext context) {
+  TextEditingController nameController = TextEditingController();
+  TextEditingController emailController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
+  String selectedRole = 'Admin'; // Default selected role
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Text("Add User", style: TextStyle(color: Color(0xFF1E40AF), fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildStyledTextField(nameController, "Name"),
-                SizedBox(height: 10),
-                _buildStyledTextField(emailController, "Email"),
-                SizedBox(height: 10),
-                _buildStyledTextField(passwordController, "Password", obscureText: true),
-                SizedBox(height: 10),
-                _buildStyledTextField(roleController, "Role"),
-              ],
-            ),
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text(
+          "Add User",
+          style: TextStyle(color: Color(0xFF1E40AF), fontWeight: FontWeight.bold),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildStyledTextField(nameController, "Name"),
+              SizedBox(height: 10),
+              _buildStyledTextField(emailController, "Email"),
+              SizedBox(height: 10),
+              _buildStyledTextField(passwordController, "Password", obscureText: true),
+              SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: selectedRole,
+                decoration: InputDecoration(
+                  labelText: "Role",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  filled: true,
+                  fillColor: Colors.grey[200],
+                ),
+                items: ['Admin', 'Security', 'Staff'].map((role) {
+                  return DropdownMenuItem<String>(
+                    value: role,
+                    child: Text(role),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    selectedRole = value;
+                  }
+                },
+              ),
+            ],
           ),
-          actions: _buildDialogActions(() {
-            createUser(nameController.text, emailController.text, passwordController.text, roleController.text);
-            Navigator.pop(context);
-          }),
-        );
-      },
-    );
-  }
+        ),
+        actions: _buildDialogActions(() {
+          createUser(
+            nameController.text,
+            emailController.text,
+            passwordController.text,
+            selectedRole,
+          );
+          Navigator.pop(context);
+        }),
+      );
+    },
+  );
+}
 
-  void _editUser(BuildContext context, Map user) {
-    TextEditingController nameController = TextEditingController(text: user['name']);
-    TextEditingController emailController = TextEditingController(text: user['email']);
-    TextEditingController roleController = TextEditingController(text: user['role']);
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Center(child: Text("Edit User", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)))),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildStyledTextField(nameController, "Name"),
-                SizedBox(height: 10),
-                _buildStyledTextField(emailController, "Email"),
-                SizedBox(height: 10),
-                _buildStyledTextField(roleController, "Role"),
-              ],
-            ),
+void _editUser(BuildContext context, Map user) {
+  TextEditingController nameController = TextEditingController(text: user['name']);
+  TextEditingController emailController = TextEditingController(text: user['email']);
+ String selectedRole = ['Admin', 'Security', 'Staff'].contains(user['role'])
+    ? user['role']
+    : 'Staff'; // Default to 'Staff' or whatever makes sense
+
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Center(
+          child: Text(
+            "Edit User",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E40AF)),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: Color(0xFF1E40AF), fontSize: 16))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF1E40AF), foregroundColor: Colors.white),
-              onPressed: () {
-                updateUser(user['id'], nameController.text, emailController.text, roleController.text);
-                Navigator.pop(context);
-              },
-              child: Text("Update", style: TextStyle(fontSize: 16)),
-            ),
-          ],
-        );
-      },
-    );
-  }
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildStyledTextField(nameController, "Name"),
+              SizedBox(height: 10),
+              _buildStyledTextField(emailController, "Email"),
+              SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: selectedRole,
+                decoration: InputDecoration(
+                  labelText: "Role",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                items: ['Admin', 'Security', 'Staff'].map((role) {
+                  return DropdownMenuItem(
+                    value: role,
+                    child: Text(role),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  selectedRole = value!;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("Cancel", style: TextStyle(color: Color(0xFF1E40AF), fontSize: 16)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF1E40AF), foregroundColor: Colors.white),
+            onPressed: () {
+              updateUser(user['id'], nameController.text, emailController.text, selectedRole);
+              Navigator.pop(context);
+            },
+            child: Text("Update", style: TextStyle(fontSize: 16)),
+          ),
+        ],
+      );
+    },
+  );
+}
 
   Widget _buildStyledTextField(TextEditingController controller, String label, {bool obscureText = false}) {
     return TextField(

@@ -160,7 +160,14 @@ onTap: (index) {
  Widget _getRoleBasedWidget(int index) {
   if (widget.role != 'Admin') {
     if (index == 0) return HomeScreen();
-    if (index == 1) return NotificationsScreen();
+    if (index == 1) {
+  if (networkService != null) {
+    return NotificationsScreen(networkService: networkService!);
+  } else {
+    return const Center(child: Text('Network Service not available'));
+  }
+}
+
     
   }
 
@@ -168,11 +175,17 @@ onTap: (index) {
     case 0: return HomeScreen();
     case 1:  if (networkService != null) {
         return ControlAndAlertScreen(networkService: networkService!);
+        // return ControlsPage();
       } else {
         return const Center(child: Text('Network Service not available'));
       }
     case 2: return LogsScreen();
-    case 3: return NotificationsScreen();
+    case 3:
+  if (networkService != null) {
+    return NotificationsScreen(networkService: networkService!);
+  } else {
+    return const Center(child: Text('Network Service not available'));
+  }
     case 4: return ManageUsersScreen();
     default: return const Center(child: Text('Invalid Option'));
   }

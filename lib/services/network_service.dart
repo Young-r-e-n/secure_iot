@@ -55,6 +55,20 @@ Map<String, String> get _headers => {
     return _handleResponse(response);
   }
 
+Future<List<Map<String, dynamic>>> fetchAlerts() async {
+  final response = await http.get(
+    Uri.parse('$baseUrl/alerts'),
+    headers: _headers,
+  );
+
+  if (response.statusCode == 200) {
+    final List<dynamic> jsonData = jsonDecode(response.body);
+    return jsonData.cast<Map<String, dynamic>>();
+  } else {
+    throw Exception('Failed to load alerts: ${response.statusCode}');
+  }
+}
+
   Map<String, dynamic> _handleResponse(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return jsonDecode(response.body);
@@ -103,7 +117,8 @@ Future<List<Map<String, dynamic>>> getLogs() async {
 
 Future<Map<String, dynamic>> testAllSensors() async {
   final response = await http.post(
-    Uri.parse('$baseUrl/api/v1/control'),
+    Uri.parse('$baseUrl/control'),
+    //https://big-wallaby-great.ngrok-free.app/api/v1
     headers: _headers,
     body: jsonEncode({
       'action': 'test_sensors',
@@ -111,6 +126,46 @@ Future<Map<String, dynamic>> testAllSensors() async {
   );
   return _handleResponse(response);
 }
+
+
+
+/// 🚀 Restart the system
+  Future<Map<String, dynamic>> restartSystem() async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/control'),
+      headers: _headers,
+      body: jsonEncode({
+        'action': 'restart_system',
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  /// 🧹 Clear system logs
+  Future<Map<String, dynamic>> clearLogs() async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/control'),
+      headers: _headers,
+      body: jsonEncode({
+        'action': 'clear_logs',
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+
+/// 📦 Update device firmware
+Future<Map<String, dynamic>> updateFirmware() async {
+  final response = await http.post(
+    Uri.parse('$baseUrl/control'),
+    headers: _headers,
+    body: jsonEncode({
+      'action': 'update_firmware',
+    }),
+  );
+  return _handleResponse(response);
+}
+
 
 
 }

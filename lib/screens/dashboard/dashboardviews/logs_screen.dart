@@ -104,6 +104,8 @@ class _LogsScreenState extends State<LogsScreen> {
         return Colors.redAccent;
       case 'warning':
         return Colors.orange;
+      case 'user':
+        return Colors.orange;
       default:
         return Colors.green;
     }
@@ -154,6 +156,7 @@ Padding(
         DropdownMenuItem(value: 'info', child: Text('Info')),
         DropdownMenuItem(value: 'warning', child: Text('Warning')),
         DropdownMenuItem(value: 'error', child: Text('Error')),
+        DropdownMenuItem(value: 'user', child: Text('User Audit')),
         DropdownMenuItem(value: 'critical', child: Text('Critical')),
       ],
       onChanged: (value) {

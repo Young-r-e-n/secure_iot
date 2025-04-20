@@ -33,12 +33,6 @@ String? _accessToken;
 void initState() {
   super.initState();
   _loadAuthData(); // Load saved authentication data
-
-  // Check if URL is available before trying to fetch system status
-  if (_urlController.text.isNotEmpty) {
-    fetchSystemStatus(); // Only fetch if URL is not empty
-  }
-
   startClock();
 }
 
@@ -56,14 +50,16 @@ Future<void> _loadAuthData() async {
   final savedToken = prefs.getString('access_token');
 
   if (savedUrl != null && savedToken != null) {
-    _urlController.text = savedUrl;
     _accessToken = savedToken;
     setState(() {
       isAuthenticated = true;
     });
     fetchSystemStatus(savedUrl);
+  } else {
+    Navigator.pushReplacementNamed(context, '/setup');
   }
 }
+
 
 
 Future<void> authenticateAndFetchStatus() async {
@@ -74,8 +70,13 @@ Future<void> authenticateAndFetchStatus() async {
   try {
     final response = await http.post(
       tokenUrl,
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+         headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    },
       body: 'username=admin&password=admin123',
+      
     );
 
     if (response.statusCode == 200) {
@@ -109,88 +110,57 @@ Future<void> fetchSystemStatus([String? baseUrl]) async {
     error = null;
   });
 
-try {
-  final base = baseUrl ?? _urlController.text.trim();
-  final url = Uri.parse('$base/status');
-  print('Requesting: $url');
+  try {
+    final base = baseUrl ?? _urlController.text.trim();
+    final url = Uri.parse('$base/status');
+    print('Requesting: $url');
 
-  final headers = <String, String>{};
-  if (_accessToken != null && _accessToken!.isNotEmpty) {
-    headers['Authorization'] = 'Bearer $_accessToken';
-  }
+    final headers = <String, String>{
+      'ngrok-skip-browser-warning': 'true', 
+    };
 
-  final response = await http.get(url, headers: headers);
-  print('Response: ${response.body}');
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $_accessToken';
+    }
 
-  if (response.statusCode == 200) {
-    final data = json.decode(response.body);
+    final response = await http.get(url, headers: headers);
+    print('Response: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      setState(() {
+        systemData = data;
+        isLoading = false;
+      });
+    } else {
+      throw Exception('Failed to load system status: ${response.statusCode}');
+    }
+  } catch (e) {
     setState(() {
-      systemData = data;
+      error = e.toString();
       isLoading = false;
     });
-  } else {
-    throw Exception('Failed to load system status: ${response.statusCode}');
   }
-} catch (e) {
-  setState(() {
-    error = e.toString();
-    isLoading = false;
-  });
 }
 
+
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: backgroundColor,
+    body: Padding(
+      padding: const EdgeInsets.all(16),
+      child: isAuthenticated
+          ? (isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : error != null
+                  ? Center(child: Text('Error: $error'))
+                  : _buildDashboard())
+          : const Center(child: CircularProgressIndicator()),
+    ),
+  );
 }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: backgroundColor,
-   
-      body: Padding(
-  padding: const EdgeInsets.all(16),
-  child: Column(
-  children: [
-    if (!isAuthenticated) ...[
-      TextField(
-        controller: _urlController,
-        decoration: InputDecoration(
-          labelText: 'Enter Base URL',
-          hintText: 'e.g., https://your-api.com',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 10),
-    ElevatedButton(
-  onPressed: authenticateAndFetchStatus,
-  style: ElevatedButton.styleFrom(
-    backgroundColor: Color(0xFF1E40AF), // Button background color
-    foregroundColor: Colors.white, // Text color
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-    textStyle: const TextStyle(
-      fontSize: 16,
-      fontWeight: FontWeight.bold,
-    ),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12), // Rounded corners
-    ),
-    elevation: 5, // Shadow effect
-  ),
-  child: const Text('🔐 Authenticate & Load System'),
-),
-
-      const SizedBox(height: 20),
-    ],
-    Expanded(
-      child: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : error != null
-              ? Center(child: Text('Error: $error'))
-              : _buildDashboard(),
-    ),
-  ],
-),
-),
-    );
-  }
 
   Widget _buildDashboard() {
     final sensors = systemData!['sensors'] as Map<String, dynamic>;
@@ -306,7 +276,7 @@ try {
       );
 
 Widget _sensorCard(dynamic sensor) {
-  final isActive = sensor['isActive'] ?? false;
+  final isActive = sensor['is_active'] ?? false;
   final error = sensor['error'];
 
   return Card(

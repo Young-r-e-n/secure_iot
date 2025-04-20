@@ -43,6 +43,53 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen>
     );
   }
 
+
+Future<void> _updateFirmware() async {
+  setState(() => _loading = true);
+  try {
+    final response = await widget.networkService.updateFirmware();
+    _showSnackBar(response['message'] ?? 'Firmware updated successfully');
+    await _fetchStatus();
+  } catch (e) {
+    _showSnackBar('Firmware update failed: $e');
+  } finally {
+    setState(() => _loading = false);
+  }
+}
+
+
+  void _showConfirmationDialog({
+  required String title,
+  required String content,
+  required VoidCallback onConfirm,
+}) {
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Text(title),
+        content: Text(content),
+        actions: [
+          TextButton(
+            child: const Text("Cancel"),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          TextButton(
+            child: const Text("Confirm"),
+            onPressed: () {
+              Navigator.of(context).pop();
+              onConfirm();
+            },
+          ),
+        ],
+      );
+    },
+  );
+}
+
+
+
+
   @override
   void dispose() {
     _pulseController.dispose();
@@ -95,137 +142,302 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen>
     }
   }
 
-  Future<void> _testAllSensors() async {
-    setState(() => _loading = true);
-    try {
-      final response = await widget.networkService.testAllSensors();
+ Future<void> _testAllSensors() async {
+  setState(() => _loading = true);
+  try {
+    final response = await widget.networkService.testAllSensors();
+
+    final resultFromPi = response['result_from_pi'];
+    if (resultFromPi != null && resultFromPi['results'] != null) {
+      _showSensorResultsDialog(resultFromPi['results'], resultFromPi['summary']);
+    } else {
       _showSnackBar(response['message'] ?? 'Test completed');
-      await _fetchStatus();
-    } catch (e) {
-      _showSnackBar('Sensor test failed: $e');
-    } finally {
-      setState(() => _loading = false);
     }
+
+    await _fetchStatus();
+  } catch (e) {
+    _showSnackBar('Sensor test failed: $e');
+  } finally {
+    setState(() => _loading = false);
+  }
+}
+
+void _showSensorResultsDialog(Map<String, dynamic> results, String summary) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) {
+      return DraggableScrollableSheet(
+        expand: false,
+        builder: (_, controller) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              const Text(
+                '🧪 Sensor Test Results',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  controller: controller,
+                  itemCount: results.length,
+                  itemBuilder: (context, index) {
+                    final key = results.keys.elementAt(index);
+                    final result = results[key];
+                    final status = result['status'] ?? 'unknown';
+                    final details = result['details'] ?? '';
+
+                    Color statusColor;
+                    IconData icon;
+                    switch (status) {
+                      case 'ok':
+                        statusColor = Colors.green;
+                        icon = Icons.check_circle;
+                        break;
+                      case 'error':
+                        statusColor = Colors.red;
+                        icon = Icons.error;
+                        break;
+                      case 'info':
+                        statusColor = Colors.orange;
+                        icon = Icons.info;
+                        break;
+                      default:
+                        statusColor = Colors.grey;
+                        icon = Icons.help_outline;
+                    }
+
+                    return Card(
+                      child: ListTile(
+                        leading: Icon(icon, color: statusColor),
+                        title: Text(key.toUpperCase()),
+                        subtitle: Text(details),
+                        trailing: Text(
+                          status.toUpperCase(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: statusColor,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                summary,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+
+Future<void> _restartSystem() async {
+  setState(() => _loading = true);
+  try {
+    final response = await widget.networkService.restartSystem();
+    _showSnackBar(response['message'] ?? 'System restarted successfully');
+    await _fetchStatus();
+  } catch (e) {
+    _showSnackBar('System restart failed: $e');
+  } finally {
+    setState(() => _loading = false);
+  }
+}
+
+Future<void> _clearLogs() async {
+  setState(() => _loading = true);
+  try {
+    final response = await widget.networkService.clearLogs();
+    _showSnackBar(response['message'] ?? 'Logs cleared successfully');
+    await _fetchStatus();
+  } catch (e) {
+    _showSnackBar('Clearing logs failed: $e');
+  } finally {
+    setState(() => _loading = false);
+  }
+}
+
+Widget _buildStatusTile(String name, dynamic sensor) {
+  final bool isActive = sensor['is_active'] ?? false;
+  final String sensorType = sensor['type'];
+  final Color statusColor = isActive ? Colors.green : Colors.blueGrey;
+  final String data = sensor['data']?.toString() ?? "No data";
+
+  IconData icon = Icons.device_unknown;
+  switch (sensorType) {
+    case 'camera':
+      icon = Icons.camera_alt;
+      break;
+    case 'door':
+      icon = Icons.door_front_door;
+      break;
+    case 'window':
+      icon = Icons.sensor_window;
+      break;
+    case 'motion':
+      icon = Icons.motion_photos_on;
+      break;
+    case 'rfid':
+      icon = Icons.rss_feed;
+      break;
+    case 'actuator':
+      icon = Icons.settings_remote;
+      break;
   }
 
-  Widget _buildStatusTile(String name, dynamic sensor) {
-    final bool isActive = sensor['is_active'] ?? false;
-    final String sensorType = sensor['type'];
-    final IconData icon;
-    final Color statusColor = isActive ? Colors.green : Colors.blueGrey;
+  return Card(
+    elevation: 4,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    child: Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top: icon + active status
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: statusColor,
+                child: Icon(icon, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name.toUpperCase(),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1),
+                    Text(
+                      isActive ? "Active" : "Inactive",
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: isActive ? Colors.green : Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
 
-    switch (sensorType) {
-      case 'camera':
-        icon = Icons.camera_alt;
-        break;
-      case 'door':
-        icon = Icons.door_front_door;
-        break;
-      case 'window':
-        icon = Icons.sensor_window;
-        break;
-      case 'motion':
-        icon = Icons.motion_photos_on;
-        break;
-      case 'rfid':
-        icon = Icons.rss_feed;
-        break;
-      case 'actuator':
-        icon = Icons.settings_remote;
-        break;
-      default:
-        icon = Icons.device_unknown;
-    }
+          const SizedBox(height: 10),
 
-    return Card(
-      elevation: 3,
-         color:Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        leading: Stack(
-          alignment: Alignment.center,
-          children: [
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                return Container(
-                  width: 40 + (_pulseController.value * 6),
-                  height: 40 + (_pulseController.value * 6),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color:
-                        isActive
-                            ? Colors.green.withOpacity(0.3)
-                            : Colors.transparent,
-                  ),
-                );
-              },
+          // Bottom: data
+          Text(
+            data,
+            style: const TextStyle(
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+              color: Colors.black87,
             ),
-            CircleAvatar(
-              backgroundColor: statusColor,
-              child: Icon(icon, color: Colors.white),
-            ),
-          ],
-        ),
-        title: Text(
-          name.toUpperCase(),
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(isActive ? "Active" : "Inactive"),
-        trailing:
-            sensor['data'] != null ? Text(sensor['data'].toString()) : null,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildDeviceControlTile({
-    required String label,
-    required String target,
-    required String selection,
-    required ValueChanged<String> onSelectionChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'lock', label: Text("🔒 Lock")),
-            ButtonSegment(value: 'unlock', label: Text("🔓 Unlock")),
-          ],
-          selected: <String>{selection},
-          onSelectionChanged: (Set<String> value) {
-            final newValue = value.first;
-            onSelectionChanged(newValue);
-            _sendControl(newValue, {'target': target});
-          },
-        ),
-      ],
-    );
-  }
 
-  Widget _buildControlButton(
-    IconData icon,
-    String label,
-    VoidCallback onPressed,
-    Color color,
-  ) {
-    return ElevatedButton.icon(
+Widget _buildDeviceControlTile({
+  required String label,
+  required String target,
+  required String selection,
+  required ValueChanged<String> onSelectionChanged,
+}) {
+  return Card(
+    elevation: 3,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    margin: const EdgeInsets.symmetric(vertical: 8),
+    child: Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // 👇 Force the segmented button to take full width
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'lock', label: Text("🔒 Lock")),
+                ButtonSegment(value: 'unlock', label: Text("🔓 Unlock")),
+              ],
+              selected: <String>{selection},
+              onSelectionChanged: (Set<String> value) {
+                final newValue = value.first;
+                onSelectionChanged(newValue);
+                final command = '${newValue}_$target';
+                _sendControl(command, {'target': target});
+              },
+              style: ButtonStyle(
+                backgroundColor:
+                    WidgetStateProperty.all(Colors.blueGrey.shade50),
+                padding: WidgetStateProperty.all(
+                  const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+
+
+ Widget _buildControlButton(
+  IconData icon,
+  String label,
+  VoidCallback onPressed,
+  Color color,
+) {
+  return SizedBox(
+    width: double.infinity,
+    child: ElevatedButton.icon(
       icon: Icon(icon),
       label: Text(label),
+      onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         backgroundColor: color,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      onPressed: onPressed,
-    );
-  }
+    ),
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -273,10 +485,51 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen>
                       ),
                       const SizedBox(height: 20),
 
-                      if (sensors.isNotEmpty)
-                        ...sensors.entries.map(
-                          (e) => _buildStatusTile(e.key, e.value),
-                        ),
+                      // if (sensors.isNotEmpty)
+                      //   ...sensors.entries.map(
+                      //     (e) => _buildStatusTile(e.key, e.value),
+                      //   ),
+
+  //                     if (sensors.isNotEmpty)
+  // GridView.builder(
+  //   shrinkWrap: true,
+  //   physics: const NeverScrollableScrollPhysics(),
+  //   itemCount: sensors.length,
+  //   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+  //     crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+  //     crossAxisSpacing: 12,
+  //     mainAxisSpacing: 12,
+  //     childAspectRatio: 1.6,
+  //   ),
+  //   itemBuilder: (context, index) {
+  //     final entry = sensors.entries.elementAt(index);
+  //     return _buildStatusTile(entry.key, entry.value);
+  //   },
+  // ),
+
+
+if (sensors.isNotEmpty)
+  Column(
+    children: [
+      GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: sensors.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.6,
+        ),
+        itemBuilder: (context, index) {
+          final entry = sensors.entries.elementAt(index);
+          return _buildStatusTile(entry.key, entry.value);
+        },
+      ),
+    ],
+  )
+,
+
 
                       const SizedBox(height: 30),
 
@@ -393,6 +646,70 @@ class _ControlAndAlertScreenState extends State<ControlAndAlertScreen>
                           ),
                         ),
                       ),
+
+
+
+const SizedBox(height: 20),
+
+// Restart and Clear Logs Card
+Card(
+  elevation: 3,
+  color: Colors.white,
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(16),
+  ),
+child: Padding(
+  padding: const EdgeInsets.all(16),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        "🛠️ System Maintenance",
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      const SizedBox(height: 16),
+      _buildControlButton(
+        Icons.restart_alt,
+        'Restart System',
+        () => _showConfirmationDialog(
+          title: "Restart System?",
+          content: "Are you sure you want to restart the system?",
+          onConfirm: _restartSystem,
+        ),
+        Colors.orange,
+      ),
+      const SizedBox(height: 10),
+      _buildControlButton(
+        Icons.delete_forever,
+        'Clear Logs',
+        () => _showConfirmationDialog(
+          title: "Clear Logs?",
+          content: "This will permanently delete all logs. Proceed?",
+          onConfirm: _clearLogs,
+        ),
+        Colors.red,
+      ),
+      const SizedBox(height: 10),
+      _buildControlButton(
+        Icons.system_update,
+        'Update Firmware',
+        () => _showConfirmationDialog(
+          title: "Update Firmware?",
+          content: "Make sure the device is connected and stable during the update. Proceed?",
+          onConfirm: _updateFirmware,
+        ),
+        Colors.blue,
+      ),
+    ],
+  ),
+),
+
+
+),
+
 
                       const SizedBox(height: 30),
                       Card(
